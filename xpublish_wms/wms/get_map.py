@@ -18,6 +18,8 @@ from fastapi.responses import StreamingResponse
 from xpublish_wms.grid import RenderMethod
 from xpublish_wms.utils import parse_float
 
+import redis
+
 logger = logging.getLogger("uvicorn")
 
 
@@ -52,13 +54,25 @@ class GetMap:
     colorscalerange: List[float]
     autoscale: bool
 
+    rConnection: redis.Redis
+
     def __init__(self, cache: cachey.Cache):
         self.cache = cache
+        self.rConnection = redis.StrictRedis(host="localhost", port=6379)
 
     def get_map(self, ds: xr.Dataset, query: dict) -> StreamingResponse:
         """
         Return the WMS map for the dataset and given parameters
         """
+        res = self.rConnection.get(str(query))
+        if res is not None:
+            print('cache hit')
+            buf = io.BytesIO(res)
+            buf.seek(0)
+            return StreamingResponse(buf, media_type="image/png")
+        else:
+            print('cache miss')
+
         #self.timings.clear()
         # Decode request params
         #start_time = time.perf_counter()
@@ -84,7 +98,7 @@ class GetMap:
         #f = open('/home/nicholas/Desktop/MQPTestingServer/get_map_results.csv', 'a')
         #f.write(f"{self.timings[0]}, {self.timings[1]}, {self.timings[2]}, {self.timings[3]}, {self.timings[4]}\n")
         #f.close()
-
+        self.rConnection.set(str(query), image_buffer.getvalue())
         return StreamingResponse(image_buffer, media_type="image/png")
 
     def get_minmax(self, ds: xr.Dataset, query: dict) -> dict:
