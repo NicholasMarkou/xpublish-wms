@@ -10,6 +10,7 @@ import matplotlib.tri as tri
 import numpy as np
 import rioxarray  # noqa
 import xarray as xr
+from memoization import cached
 
 from xpublish_wms.utils import lnglat_to_mercator, strip_float, to_mercator
 
@@ -83,16 +84,16 @@ class Grid(ABC):
             return None
 
     def select_by_elevation(
-        self,
-        da: xr.DataArray,
-        elevations: Sequence[float],
+            self,
+            da: xr.DataArray,
+            elevations: Sequence[float],
     ) -> xr.DataArray:
         """Select the given data array by elevation"""
 
         if (
-            elevations is None
-            or len(elevations) == 0
-            or all(v is None for v in elevations)
+                elevations is None
+                or len(elevations) == 0
+                or all(v is None for v in elevations)
         ):
             elevations = [0.0]
 
@@ -107,8 +108,8 @@ class Grid(ABC):
         return da
 
     def mask(
-        self,
-        da: Union[xr.DataArray, xr.Dataset],
+            self,
+            da: Union[xr.DataArray, xr.Dataset],
     ) -> Union[xr.DataArray, xr.Dataset]:
         """Mask the given data array"""
         return da
@@ -123,11 +124,11 @@ class Grid(ABC):
         pass
 
     def sel_lat_lng(
-        self,
-        subset: xr.Dataset,
-        lng,
-        lat,
-        parameters,
+            self,
+            subset: xr.Dataset,
+            lng,
+            lat,
+            parameters,
     ) -> Tuple[xr.Dataset, list, list]:
         """Select the given dataset by the given lon/lat and optional elevation"""
 
@@ -244,11 +245,11 @@ class NonDimensionalGrid(Grid):
         return da
 
     def sel_lat_lng(
-        self,
-        subset: xr.Dataset,
-        lng,
-        lat,
-        parameters,
+            self,
+            subset: xr.Dataset,
+            lng,
+            lat,
+            parameters,
     ) -> Tuple[xr.Dataset, list, list]:
         """Select the given dataset by the given lon/lat and optional elevation"""
 
@@ -308,10 +309,10 @@ class NonDimensionalGrid(Grid):
 
             for parameter in parameters:
                 values = subset[parameter].values[
-                    ...,
-                    valid_quad[0][0] : (valid_quad[1][0] + 1),
-                    valid_quad[0][1] : (valid_quad[1][1] + 1),
-                ]
+                         ...,
+                         valid_quad[0][0]: (valid_quad[1][0] + 1),
+                         valid_quad[0][1]: (valid_quad[1][1] + 1),
+                         ]
 
                 new_value = bilinear_interp(percent_point, percent_quad, values)
                 ret_subset.__setitem__(
@@ -349,8 +350,8 @@ class ROMSGrid(Grid):
         return "EPSG:4326"
 
     def mask(
-        self,
-        da: Union[xr.DataArray, xr.Dataset],
+            self,
+            da: Union[xr.DataArray, xr.Dataset],
     ) -> Union[xr.DataArray, xr.Dataset]:
         mask = self.ds[f'mask_{da.cf["latitude"].name.split("_")[1]}']
         if "time" in mask.cf.coords:
@@ -395,11 +396,11 @@ class ROMSGrid(Grid):
         return da
 
     def sel_lat_lng(
-        self,
-        subset: xr.Dataset,
-        lng,
-        lat,
-        parameters,
+            self,
+            subset: xr.Dataset,
+            lng,
+            lat,
+            parameters,
     ) -> Tuple[xr.Dataset, list, list]:
         unique_dims = dict()
         for parameter in parameters:
@@ -473,10 +474,10 @@ class ROMSGrid(Grid):
                     valid_quad,
                 )
                 values = subset[parameter].values[
-                    ...,
-                    valid_quad[0][0] : (valid_quad[1][0] + 1),
-                    valid_quad[0][1] : (valid_quad[1][1] + 1),
-                ]
+                         ...,
+                         valid_quad[0][0]: (valid_quad[1][0] + 1),
+                         valid_quad[0][1]: (valid_quad[1][1] + 1),
+                         ]
 
                 new_value = bilinear_interp(percent_point, percent_quad, values)
                 ret_subset.__setitem__(
@@ -529,8 +530,8 @@ class HYCOMGrid(Grid):
         )
 
     def mask(
-        self,
-        da: Union[xr.DataArray, xr.Dataset],
+            self,
+            da: Union[xr.DataArray, xr.Dataset],
     ) -> Union[xr.DataArray, xr.Dataset]:
         # mask values where the longitude is >500 bc of RTOFS-Global https://oceanpython.org/2012/11/29/global-rtofs-real-time-ocean-forecast-system/
         lng = da.cf["longitude"]
@@ -554,23 +555,23 @@ class HYCOMGrid(Grid):
         return da.where(np_mask.mask == 0)
 
     def project(self, da: xr.DataArray, crs: str) -> Any:
-        #da = self.mask(da)
-        da = da[0:,:-1,] # Drop lng>500
+        # da = self.mask(da)
+        da = da[0:, :-1, ]  # Drop lng>500
 
         # create 2 separate DataArrays where points lng>180 are put at the beginning of the array
         mask_0 = xr.where(da.cf["longitude"] <= 180, 1, 0)
-        computedMask = mask_0.compute() # Compute once use twice
+        computedMask = mask_0.compute()  # Compute once use twice
         da_0 = da.where(computedMask == 1, drop=True)
 
-        #mask_1 = xr.where(da.cf["longitude"] > 180, 1, 0)
+        # mask_1 = xr.where(da.cf["longitude"] > 180, 1, 0)
 
         da_1 = da.where(computedMask != 1, drop=True)
         da_1.cf["longitude"][:] = da_1.cf["longitude"][:] - 360
 
         # put the 2 DataArrays back together in the proper order
-        #startTime = time.time()
+        # startTime = time.time()
         da = xr.concat([da_1, da_0], dim="X")
-        #print(str(time.time() - startTime))
+        # print(str(time.time() - startTime))
 
         if crs == "EPSG:4326":
             da = da.assign_coords({"x": da.cf["longitude"], "y": da.cf["latitude"]})
@@ -583,11 +584,11 @@ class HYCOMGrid(Grid):
         return da
 
     def sel_lat_lng(
-        self,
-        subset: xr.Dataset,
-        lng,
-        lat,
-        parameters,
+            self,
+            subset: xr.Dataset,
+            lng,
+            lat,
+            parameters,
     ) -> Tuple[xr.Dataset, list, list]:
         """Select the given dataset by the given lon/lat and optional elevation"""
 
@@ -657,10 +658,10 @@ class HYCOMGrid(Grid):
 
             for parameter in parameters:
                 values = subset[parameter].values[
-                    ...,
-                    valid_quad[0][0] : (valid_quad[1][0] + 1),
-                    valid_quad[0][1] : (valid_quad[1][1] + 1),
-                ]
+                         ...,
+                         valid_quad[0][0]: (valid_quad[1][0] + 1),
+                         valid_quad[0][1]: (valid_quad[1][1] + 1),
+                         ]
 
                 new_value = bilinear_interp(percent_point, percent_quad, values)
                 ret_subset.__setitem__(
@@ -746,11 +747,11 @@ class FVCOMGrid(Grid):
         return None
 
     def sel_lat_lng(
-        self,
-        subset: xr.Dataset,
-        lng,
-        lat,
-        parameters,
+            self,
+            subset: xr.Dataset,
+            lng,
+            lat,
+            parameters,
     ) -> Tuple[xr.Dataset, list, list]:
         """Select the given dataset by the given lon/lat and optional elevation"""
 
@@ -776,12 +777,12 @@ class FVCOMGrid(Grid):
 
                 mask = neighbors[:, :] > 0
                 data = (
-                    np.sum(
-                        subset[parameter].values[..., neighbors[:, :] - 1],
-                        axis=-2,
-                        where=mask,
-                    )
-                    / elem_count
+                        np.sum(
+                            subset[parameter].values[..., neighbors[:, :] - 1],
+                            axis=-2,
+                            where=mask,
+                        )
+                        / elem_count
                 )
                 temp_arrays[subset[parameter].name] = (
                     subset[parameter].dims,
@@ -889,18 +890,18 @@ class FVCOMGrid(Grid):
         return ret_subset, x_axis, y_axis
 
     def select_by_elevation(
-        self,
-        da: xr.DataArray,
-        elevations: Optional[Sequence[float]],
+            self,
+            da: xr.DataArray,
+            elevations: Optional[Sequence[float]],
     ) -> xr.DataArray:
         """Select the given data array by elevation"""
         if not self.has_elevation(da):
             return da
 
         if (
-            elevations is None
-            or len(elevations) == 0
-            or all(v is None for v in elevations)
+                elevations is None
+                or len(elevations) == 0
+                or all(v is None for v in elevations)
         ):
             elevations = [0.0]
 
@@ -1067,11 +1068,11 @@ class SELFEGrid(Grid):
         return None
 
     def sel_lat_lng(
-        self,
-        subset: xr.Dataset,
-        lng,
-        lat,
-        parameters,
+            self,
+            subset: xr.Dataset,
+            lng,
+            lat,
+            parameters,
     ) -> Tuple[xr.Dataset, list, list]:
         """Select the given dataset by the given lon/lat and optional elevation"""
 
@@ -1154,18 +1155,18 @@ class SELFEGrid(Grid):
         return ret_subset, x_axis, y_axis
 
     def select_by_elevation(
-        self,
-        da: xr.DataArray,
-        elevations: Optional[Sequence[float]],
+            self,
+            da: xr.DataArray,
+            elevations: Optional[Sequence[float]],
     ) -> xr.DataArray:
         """Select the given data array by elevation"""
         if not self.has_elevation(da):
             return da
 
         if (
-            elevations is None
-            or len(elevations) == 0
-            or all(v is None for v in elevations)
+                elevations is None
+                or len(elevations) == 0
+                or all(v is None for v in elevations)
         ):
             elevations = [0.0]
 
@@ -1335,9 +1336,9 @@ class GridDatasetAccessor:
             return self._grid.elevations(da)
 
     def select_by_elevation(
-        self,
-        da: xr.DataArray,
-        elevations: Optional[Sequence[float]],
+            self,
+            da: xr.DataArray,
+            elevations: Optional[Sequence[float]],
     ) -> xr.DataArray:
         if self._grid is None:
             return None
@@ -1345,14 +1346,21 @@ class GridDatasetAccessor:
             return self._grid.select_by_elevation(da, elevations)
 
     def mask(
-        self,
-        da: Union[xr.DataArray, xr.Dataset],
+            self,
+            da: Union[xr.DataArray, xr.Dataset],
     ) -> Union[xr.DataArray, xr.Dataset]:
         if self._grid is None:
             return None
         else:
             return self._grid.mask(da)
 
+    def testHash(self, da: xr.DataArray, crs: str) -> str:
+        try:
+            return str(da.MT.data) + da.standard_name
+        except:
+            return da.standard_name
+
+    @cached(custom_key_maker=testHash)
     def project(self, da: xr.DataArray, crs: str) -> xr.DataArray:
         if self._grid is None:
             return None
@@ -1366,11 +1374,11 @@ class GridDatasetAccessor:
             return self._grid.tessellate(da)
 
     def sel_lat_lng(
-        self,
-        subset: xr.Dataset,
-        lng,
-        lat,
-        parameters,
+            self,
+            subset: xr.Dataset,
+            lng,
+            lat,
+            parameters,
     ) -> Tuple[xr.Dataset, list, list]:
         if self._grid is None:
             return None
@@ -1483,15 +1491,15 @@ def barycentric_weights(point, v1, v2, v3):
     """
 
     denominator = ((v2[1] - v3[1]) * (v1[0] - v3[0])) + (
-        (v3[0] - v2[0]) * (v1[1] - v3[1])
+            (v3[0] - v2[0]) * (v1[1] - v3[1])
     )
 
     w1 = (
-        ((v2[1] - v3[1]) * (point[0] - v3[0])) + ((v3[0] - v2[0]) * (point[1] - v3[1]))
-    ) / denominator
+                 ((v2[1] - v3[1]) * (point[0] - v3[0])) + ((v3[0] - v2[0]) * (point[1] - v3[1]))
+         ) / denominator
     w2 = (
-        ((v3[1] - v1[1]) * (point[0] - v3[0])) + ((v1[0] - v3[0]) * (point[1] - v3[1]))
-    ) / denominator
+                 ((v3[1] - v1[1]) * (point[0] - v3[0])) + ((v1[0] - v3[0]) * (point[1] - v3[1]))
+         ) / denominator
     w3 = 1 - w1 - w2
 
     return w1, w2, w3
@@ -1523,14 +1531,14 @@ def lat_lng_find_tri(lng, lat, lng_values, lat_values, triangles):
     lnglat_data = np.stack((lng_values[triangles], lat_values[triangles]), axis=2)
 
     d1 = (
-        (lng - lnglat_data[:, 1, 0]) * (lnglat_data[:, 0, 1] - lnglat_data[:, 1, 1])
-    ) - ((lnglat_data[:, 0, 0] - lnglat_data[:, 1, 0]) * (lat - lnglat_data[:, 1, 1]))
+                 (lng - lnglat_data[:, 1, 0]) * (lnglat_data[:, 0, 1] - lnglat_data[:, 1, 1])
+         ) - ((lnglat_data[:, 0, 0] - lnglat_data[:, 1, 0]) * (lat - lnglat_data[:, 1, 1]))
     d2 = (
-        (lng - lnglat_data[:, 2, 0]) * (lnglat_data[:, 1, 1] - lnglat_data[:, 2, 1])
-    ) - ((lnglat_data[:, 1, 0] - lnglat_data[:, 2, 0]) * (lat - lnglat_data[:, 2, 1]))
+                 (lng - lnglat_data[:, 2, 0]) * (lnglat_data[:, 1, 1] - lnglat_data[:, 2, 1])
+         ) - ((lnglat_data[:, 1, 0] - lnglat_data[:, 2, 0]) * (lat - lnglat_data[:, 2, 1]))
     d3 = (
-        (lng - lnglat_data[:, 0, 0]) * (lnglat_data[:, 2, 1] - lnglat_data[:, 0, 1])
-    ) - ((lnglat_data[:, 2, 0] - lnglat_data[:, 0, 0]) * (lat - lnglat_data[:, 0, 1]))
+                 (lng - lnglat_data[:, 0, 0]) * (lnglat_data[:, 2, 1] - lnglat_data[:, 0, 1])
+         ) - ((lnglat_data[:, 2, 0] - lnglat_data[:, 0, 0]) * (lat - lnglat_data[:, 0, 1]))
 
     has_neg = np.logical_or(np.logical_or(d1 < 0, d2 < 0), d3 < 0)
     has_pos = np.logical_or(np.logical_or(d1 > 0, d2 > 0), d3 > 0)
@@ -1565,19 +1573,19 @@ def bilinear_interp(percent_point, percent_quad, value_quad):
     a = -percent_quad[0][0][0] + percent_quad[0][1][0]
     b = -percent_quad[0][0][0] + percent_quad[1][0][0]
     c = (
-        percent_quad[0][0][0]
-        - percent_quad[1][0][0]
-        - percent_quad[0][1][0]
-        + percent_quad[1][1][0]
+            percent_quad[0][0][0]
+            - percent_quad[1][0][0]
+            - percent_quad[0][1][0]
+            + percent_quad[1][1][0]
     )
     d = percent_point[0] - percent_quad[0][0][0]
     e = -percent_quad[0][0][1] + percent_quad[0][1][1]
     f = -percent_quad[0][0][1] + percent_quad[1][0][1]
     g = (
-        percent_quad[0][0][1]
-        - percent_quad[1][0][1]
-        - percent_quad[0][1][1]
-        + percent_quad[1][1][1]
+            percent_quad[0][0][1]
+            - percent_quad[1][0][1]
+            - percent_quad[0][1][1]
+            + percent_quad[1][1][1]
     )
     h = percent_point[1] - percent_quad[0][0][1]
 
@@ -1590,31 +1598,31 @@ def bilinear_interp(percent_point, percent_quad, value_quad):
         beta = percent_point[1]
     else:
         alpha = (
-            -(
-                b * e
-                - a * f
-                + d * g
-                - c * h
-                + np.sqrt(
+                -(
+                        b * e
+                        - a * f
+                        + d * g
+                        - c * h
+                        + np.sqrt(
                     -4 * (c * e - a * g) * (d * f - b * h)
                     + np.power((b * e - a * f + d * g - c * h), 2),
                 )
-            )
-            / alpha_denominator
+                )
+                / alpha_denominator
         )
         beta = (
-            b * e
-            - a * f
-            - d * g
-            + c * h
-            + np.sqrt(
-                -4 * (c * e - a * g) * (d * f - b * h)
-                + np.power((b * e - a * f + d * g - c * h), 2),
-            )
-        ) / beta_denominator
+                       b * e
+                       - a * f
+                       - d * g
+                       + c * h
+                       + np.sqrt(
+                   -4 * (c * e - a * g) * (d * f - b * h)
+                   + np.power((b * e - a * f + d * g - c * h), 2),
+               )
+               ) / beta_denominator
 
     return (1 - alpha) * (
-        (1 - beta) * value_quad[..., 0, 0] + beta * value_quad[..., 1, 0]
+            (1 - beta) * value_quad[..., 0, 0] + beta * value_quad[..., 1, 0]
     ) + alpha * ((1 - beta) * value_quad[..., 0, 1] + beta * value_quad[..., 1, 1])
 
 
@@ -1639,8 +1647,8 @@ def lat_lng_quad_percentage(lng, lat, lng_values, lat_values, quad):
     within the percent quad
     """
 
-    lngs = lng_values[quad[0][0] : (quad[1][0] + 1), quad[0][1] : (quad[1][1] + 1)]
-    lats = lat_values[quad[0][0] : (quad[1][0] + 1), quad[0][1] : (quad[1][1] + 1)]
+    lngs = lng_values[quad[0][0]: (quad[1][0] + 1), quad[0][1]: (quad[1][1] + 1)]
+    lats = lat_values[quad[0][0]: (quad[1][0] + 1), quad[0][1]: (quad[1][1] + 1)]
 
     lng_min = np.min(lngs)
     lng_max = np.max(lngs)
@@ -1684,10 +1692,10 @@ def lat_lng_find_quad(lng, lat, lng_values, lat_values):
 
     x0y0tox0y1 = np.where(
         (
-            (lnglat_data[1:, :-1, 0] - lnglat_data[:-1, :-1, 0])
-            * (lat - lnglat_data[:-1, :-1, 1])
-            - (lng - lnglat_data[:-1, :-1, 0])
-            * (lnglat_data[1:, :-1, 1] - lnglat_data[:-1, :-1, 1])
+                (lnglat_data[1:, :-1, 0] - lnglat_data[:-1, :-1, 0])
+                * (lat - lnglat_data[:-1, :-1, 1])
+                - (lng - lnglat_data[:-1, :-1, 0])
+                * (lnglat_data[1:, :-1, 1] - lnglat_data[:-1, :-1, 1])
         )
         <= 0,
         1,
@@ -1695,10 +1703,10 @@ def lat_lng_find_quad(lng, lat, lng_values, lat_values):
     )
     x0y1tox1y1 = np.where(
         (
-            (lnglat_data[1:, 1:, 0] - lnglat_data[1:, :-1, 0])
-            * (lat - lnglat_data[1:, :-1, 1])
-            - (lng - lnglat_data[1:, :-1, 0])
-            * (lnglat_data[1:, 1:, 1] - lnglat_data[1:, :-1, 1])
+                (lnglat_data[1:, 1:, 0] - lnglat_data[1:, :-1, 0])
+                * (lat - lnglat_data[1:, :-1, 1])
+                - (lng - lnglat_data[1:, :-1, 0])
+                * (lnglat_data[1:, 1:, 1] - lnglat_data[1:, :-1, 1])
         )
         <= 0,
         1,
@@ -1706,10 +1714,10 @@ def lat_lng_find_quad(lng, lat, lng_values, lat_values):
     )
     x1y1tox1y0 = np.where(
         (
-            (lnglat_data[:-1, 1:, 0] - lnglat_data[1:, 1:, 0])
-            * (lat - lnglat_data[1:, 1:, 1])
-            - (lng - lnglat_data[1:, 1:, 0])
-            * (lnglat_data[:-1, 1:, 1] - lnglat_data[1:, 1:, 1])
+                (lnglat_data[:-1, 1:, 0] - lnglat_data[1:, 1:, 0])
+                * (lat - lnglat_data[1:, 1:, 1])
+                - (lng - lnglat_data[1:, 1:, 0])
+                * (lnglat_data[:-1, 1:, 1] - lnglat_data[1:, 1:, 1])
         )
         <= 0,
         1,
@@ -1717,11 +1725,11 @@ def lat_lng_find_quad(lng, lat, lng_values, lat_values):
     )
     x1y0tox0y0 = np.where(
         (
-            (lnglat_data[:-1, :-1, 0] - lnglat_data[:-1, 1:, 0])
-            * (lat - lnglat_data[:-1, 1:, 1])
-            - (lng - lnglat_data[:-1, 1:, 0])
-            * (lnglat_data[:-1, :-1, 1] - lnglat_data[:-1, 1:, 1])
-            <= 0
+                (lnglat_data[:-1, :-1, 0] - lnglat_data[:-1, 1:, 0])
+                * (lat - lnglat_data[:-1, 1:, 1])
+                - (lng - lnglat_data[:-1, 1:, 0])
+                * (lnglat_data[:-1, :-1, 1] - lnglat_data[:-1, 1:, 1])
+                <= 0
         ),
         1,
         0,
