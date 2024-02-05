@@ -1355,10 +1355,7 @@ class GridDatasetAccessor:
             return self._grid.mask(da)
 
     def testHash(self, da: xr.DataArray, crs: str) -> str:
-        try:
-            return str(da.MT.data) + da.standard_name
-        except:
-            return da.standard_name
+        return str(da.attrs)
 
     @cached(custom_key_maker=testHash)
     def project(self, da: xr.DataArray, crs: str) -> xr.DataArray:
