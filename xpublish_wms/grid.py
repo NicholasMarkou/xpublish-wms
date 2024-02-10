@@ -1359,6 +1359,8 @@ class GridDatasetAccessor:
             return self._grid.mask(da)
 
     def testHash(self, da: xr.DataArray, crs: str) -> str:
+        if self.has_elevation(da):
+            return str(da.attrs)+str(self.elevations(da).values)
         return str(da.attrs)
 
     @cached(custom_key_maker=testHash)
