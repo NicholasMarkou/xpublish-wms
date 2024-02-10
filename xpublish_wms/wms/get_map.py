@@ -19,8 +19,24 @@ from xpublish_wms.grid import RenderMethod
 from xpublish_wms.utils import parse_float
 
 import redis
+from PIL import Image
+
 
 logger = logging.getLogger("uvicorn")
+
+
+def binary_to_color(buf: io.BytesIO, cmap: str) -> io.BytesIO:
+    """
+    Takes a binary colored tile, and converts it to the requested cmap.
+    """
+    img = np.array(Image.open(buf).convert('L'))
+    print(cmap)
+    cmap_vals = cm.get_cmap(cmap+"_r")
+    #attempt to make first color transparent
+    img_conv = cmap_vals(img, img) * 255
+    new_buf = io.BytesIO()
+    Image.fromarray(np.uint8(img_conv)).save(new_buf, format="PNG")
+    return new_buf
 
 
 class GetMap:
@@ -64,17 +80,20 @@ class GetMap:
         """
         Return the WMS map for the dataset and given parameters
         """
-        res = self.rConnection.get(str(query))
-        if res is not None:
-            self.rConnection.expire(str(query), 300)
-            buf = io.BytesIO(res)
-            buf.seek(0)
-            return StreamingResponse(buf, media_type="image/png")
 
         #self.timings.clear()
         # Decode request params
         #start_time = time.perf_counter()
         self.ensure_query_types(ds, query)
+
+        query["styles"] = self.stylename
+        res = self.rConnection.get(str(query))
+        if res is not None:
+            buf = io.BytesIO(res)
+            buf.seek(0)
+            buf = binary_to_color(buf, self.palettename)
+            buf.seek(0)
+            return StreamingResponse(buf, media_type="image/png")
 
         # Select data according to request
         da = self.select_layer(ds)
@@ -89,14 +108,19 @@ class GetMap:
         # The grid type for now. This can be revisited if we choose to interpolate or
         # use the contoured renderer for regular grid datasets
         image_buffer = io.BytesIO()
+        old_name = self.palettename
+        self.palettename = 'binary'
         render_result = self.render(ds, da, image_buffer, False)
         if render_result:
             image_buffer.seek(0)
+        self.rConnection.setex(str(query), 300, image_buffer.getvalue())
+        image_buffer = binary_to_color(image_buffer, old_name)
+        image_buffer.seek(0)
         #self.timings.append(sum(self.timings))
         #f = open('/home/nicholas/Desktop/MQPTestingServer/get_map_results.csv', 'a')
         #f.write(f"{self.timings[0]}, {self.timings[1]}, {self.timings[2]}, {self.timings[3]}, {self.timings[4]}\n")
         #f.close()
-        self.rConnection.setex(str(query), 300, image_buffer.getvalue())
+        # self.rConnection.setex(str(query), 300, image_buffer.getvalue())
         return StreamingResponse(image_buffer, media_type="image/png")
 
     def get_minmax(self, ds: xr.Dataset, query: dict) -> dict:
@@ -334,7 +358,8 @@ class GetMap:
 
         shaded = tf.shade(
             mesh,
-            cmap=cm.get_cmap(self.palettename),
+            #cmap=cm.get_cmap(self.palettename),
+            cmap=cm.get_cmap('binary'),
             how="linear",
             span=(vmin, vmax),
         )
