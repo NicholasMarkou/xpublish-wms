@@ -29,13 +29,14 @@ def binary_to_color(buf: io.BytesIO, cmap: str) -> io.BytesIO:
     """
     Takes a binary colored tile, and converts it to the requested cmap.
     """
-    img = np.array(Image.open(buf).convert('L'))
-    print(cmap)
-    cmap_vals = cm.get_cmap(cmap+"_r")
-    #attempt to make first color transparent
-    img_conv = cmap_vals(img, img) * 255
+    img = Image.open(buf)
+    data = np.array(img.getchannel('R'))
+    alpha = np.array(img.getchannel('A'))
+    cmap = cmap+"_r" if cmap[-2:] != "_r" else cmap[:-2]
+    cmap_vals = cm.get_cmap(cmap)
+    img_conv = cmap_vals(data, alpha, bytes=True)
     new_buf = io.BytesIO()
-    Image.fromarray(np.uint8(img_conv)).save(new_buf, format="PNG")
+    Image.fromarray(img_conv).save(new_buf, format="PNG")
     return new_buf
 
 
@@ -111,6 +112,7 @@ class GetMap:
         old_name = self.palettename
         self.palettename = 'binary'
         render_result = self.render(ds, da, image_buffer, False)
+        self.palettename=old_name
         if render_result:
             image_buffer.seek(0)
         self.rConnection.setex(str(query), 300, image_buffer.getvalue())
